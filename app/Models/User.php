@@ -6,11 +6,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+
+use Laravel\Sanctum\HasApiTokens;
+
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, HasApiTokens;
 
     protected $table = 'user';
+
 
     protected $fillable = [
         'username',
@@ -31,35 +35,39 @@ class User extends Authenticatable
         'permissions',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'email_verified' => 'datetime',
-            'phone_verified' => 'datetime',
-            'created_at' => 'datetime',
-            'modified_at' => 'datetime',
-            'kyc_verified' => 'boolean',
-            'user_verified' => 'boolean',
-        ];
-    }
+    protected $casts = [
+        'roles' => 'array',
+        'email_verified' => 'datetime',
+        'phone_verified' => 'datetime',
+        'created_at' => 'datetime',
+        'modified_at' => 'datetime',
+        'kyc_verified' => 'boolean',
+        'user_verified' => 'boolean',
+    ];
 
     public function properties()
     {
         return $this->hasMany(Property::class);
     }
 
-    public function socialMedia()
-    {
-        return $this->hasOne(SocialMedia::class);
-    }
-
     public function bankAccount()
     {
-        return $this->hasOne(BankAccount::class);
+        return $this->hasOne(UserBankAccountDetail::class);
     }
 
     public function wallet()
     {
-        return $this->hasOne(UserWallet::class, 'user_id');
+        return $this->hasOne(UserWallet::class);
+    }
+
+    public function userInformation()
+    {
+        return $this->hasOne(UserInformation::class);
+    }
+
+    // Define the relationship to user subscriptions
+    public function userSubscriptions()
+    {
+        return $this->hasMany(UserSubscriptionPlan::class, 'user_id');
     }
 }

@@ -9,7 +9,7 @@ class Property extends Model
 {
     use HasFactory;
 
-    protected $table = 'properties';
+    protected $table = 'property';
 
     protected $fillable = [
         'type_id',
@@ -36,4 +36,12 @@ class Property extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    // Property.php
+
+    public function type()
+    {
+        return $this->belongsTo(PropertyType::class, 'type_id');
+    }
+
 }
