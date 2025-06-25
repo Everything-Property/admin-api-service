@@ -83,7 +83,7 @@ jobs:
       - name: Deploy to Hostinger
         uses: burnett01/rsync-deployments@5.2.1
         with:
-          switches: -avzr --delete --exclude '.git' --exclude '.github' --exclude 'node_modules' --exclude '.DS_Store' --exclude 'tests' --exclude 'storage/logs' --exclude 'storage/framework/cache' --exclude 'storage/framework/sessions' --exclude 'storage/framework/views'
+          switches: -avzr --delete --exclude '.git' --exclude '.github' --exclude 'node_modules' --exclude '.DS_Store' --exclude 'tests' --exclude 'storage/logs' --exclude 'storage/framework/cache' --exclude 'storage/framework/sessions' --exclude 'storage/framework/views' --exclude '.env' --exclude '.htaccess'
           path: ./
           remote_path: domains/everythingproperty.ng/public_html/api/admin/
           remote_host: 145.223.76.158
@@ -100,7 +100,7 @@ jobs:
       - name: Setup Laravel environment
         run: |
           echo "Setting up Laravel environment..."
-          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd domains/everythingproperty.ng/public_html/api/admin && cp .env.example .env && chmod -R 755 storage bootstrap/cache && echo 'Laravel environment setup completed'"
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd domains/everythingproperty.ng/public_html/api/admin && [ ! -f .env ] && cp .env.example .env || echo '.env already exists, skipping' && chmod -R 755 storage bootstrap/cache && echo 'Laravel environment setup completed'"
           echo "Environment setup completed"
 
       - name: Generate Laravel key
