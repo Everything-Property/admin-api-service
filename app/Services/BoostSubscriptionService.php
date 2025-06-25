@@ -119,6 +119,7 @@ class BoostSubscriptionService
         return $result;
     }
 
+
     /**
      * Get user's current active boost subscription
      */
