@@ -62,18 +62,24 @@ jobs:
           echo "SSH connection test with verbose output:"
           ssh -v -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "echo 'SSH connection successful'" || echo "SSH connection failed"
 
+      - name: Check server directories and permissions
+        run: |
+          echo "Checking available directories and permissions..."
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "pwd && ls -la && echo '--- Home directory ---' && ls -la ~ && echo '--- Public HTML directory ---' && ls -la ~/public_html 2>/dev/null || echo 'public_html not found in home'"
+          echo "Directory check completed"
+
       - name: Create deployment directory
         run: |
           echo "Creating deployment directory..."
-          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "mkdir -p /public_html/api"
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "mkdir -p ~/public_html/api"
           echo "Directory created successfully"
 
       - name: Deploy to Hostinger
         uses: burnett01/rsync-deployments@5.2.1
         with:
-          switches: -avzr --delete --exclude '.env' --exclude '.git'
+          switches: -avzr --delete
           path: ./
-          remote_path: /public_html/api
+          remote_path: ~/public_html/api/
           remote_host: 145.223.76.158
           remote_user: u179209572
           remote_key: ${{ secrets.HOSTINGER_SSH_KEY }}
