@@ -74,10 +74,16 @@ jobs:
           ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "mkdir -p public_html/api"
           echo "Directory created successfully"
 
+      - name: Clean deployment directory
+        run: |
+          echo "Cleaning deployment directory..."
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "rm -rf public_html/api/* public_html/api/.[^.]* 2>/dev/null || true"
+          echo "Directory cleaned successfully"
+
       - name: Deploy to Hostinger
         uses: burnett01/rsync-deployments@5.2.1
         with:
-          switches: -avzr --delete
+          switches: -avzr --delete --exclude '.git' --exclude '.github' --exclude 'node_modules' --exclude '.DS_Store' --exclude 'tests' --exclude 'storage/logs' --exclude 'storage/framework/cache' --exclude 'storage/framework/sessions' --exclude 'storage/framework/views'
           path: ./
           remote_path: public_html/api/
           remote_host: 145.223.76.158
@@ -88,5 +94,17 @@ jobs:
       - name: Verify deployment
         run: |
           echo "Verifying deployment..."
-          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "echo '--- Contents of public_html/api ---' && ls -la public_html/api && echo '--- Checking for admin directory ---' && ls -la public_html/api/admin 2>/dev/null || echo 'admin directory not found'"
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "echo '--- Contents of public_html/api ---' && ls -la public_html/api && echo '--- Checking for app directory (Laravel) ---' && ls -la public_html/api/app 2>/dev/null || echo 'app directory not found' && echo '--- Checking for public directory ---' && ls -la public_html/api/public 2>/dev/null || echo 'public directory not found'"
           echo "Deployment verification completed"
+
+      - name: Setup Laravel environment
+        run: |
+          echo "Setting up Laravel environment..."
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd public_html/api && cp .env.example .env && chmod -R 755 storage bootstrap/cache && echo 'Laravel environment setup completed'"
+          echo "Environment setup completed"
+
+      - name: Generate Laravel key
+        run: |
+          echo "Generating Laravel application key..."
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd public_html/api && php artisan key:generate --force"
+          echo "Application key generated"
