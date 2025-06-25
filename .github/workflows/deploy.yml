@@ -51,12 +51,16 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          echo "SSH key file created. Checking content:"
+          ls -la ~/.ssh/deploy_key
+          echo "First few lines of the key file:"
+          head -3 ~/.ssh/deploy_key
           echo "SSH key format check:"
-          ssh-keygen -l -f ~/.ssh/deploy_key
+          ssh-keygen -l -f ~/.ssh/deploy_key || echo "Key format check failed"
           echo "Public key content:"
-          ssh-keygen -y -f ~/.ssh/deploy_key
+          ssh-keygen -y -f ~/.ssh/deploy_key || echo "Could not extract public key"
           echo "SSH connection test with verbose output:"
-          ssh -v -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "echo 'SSH connection successful'"
+          ssh -v -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "echo 'SSH connection successful'" || echo "SSH connection failed"
 
       - name: Deploy to Hostinger
         uses: burnett01/rsync-deployments@5.2.1
