@@ -1,0 +1,70 @@
+name: Deploy to Hostinger
+
+# Using updated SSH key for deployment
+on:
+  push:
+    branches:
+      - main # or master, depending on your default branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1"
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          coverage: none
+
+      - name: Debug directory structure
+        run: |
+          pwd
+          ls -la
+          ls -la .github/workflows/
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Update Composer dependencies
+        run: |
+          composer update --no-interaction --prefer-dist --with-all-dependencies
+
+      - name: Install Composer dependencies
+        run: |
+          composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Debug SSH connection
+        run: |
+          echo "Testing SSH connection..."
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "SSH key format check:"
+          ssh-keygen -l -f ~/.ssh/deploy_key
+          echo "Public key content:"
+          ssh-keygen -y -f ~/.ssh/deploy_key
+          echo "SSH connection test with verbose output:"
+          ssh -v -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "echo 'SSH connection successful'"
+
+      - name: Deploy to Hostinger
+        uses: burnett01/rsync-deployments@5.2.1
+        with:
+          switches: -avzr --delete --exclude '.env' --exclude '.git'
+          path: ./
+          remote_path: /public_html/api
+          remote_host: 145.223.76.158
+          remote_user: u179209572
+          remote_key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          remote_port: 65002
