@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -35,8 +37,10 @@ class User extends Authenticatable
         'permissions',
     ];
 
+
     protected $casts = [
         'roles' => 'array',
+        'permissions' => 'array',
         'email_verified' => 'datetime',
         'phone_verified' => 'datetime',
         'created_at' => 'datetime',
@@ -47,7 +51,7 @@ class User extends Authenticatable
 
     public function properties()
     {
-        return $this->hasMany(Property::class);
+        return $this->hasMany(Property::class, 'user_id');
     }
 
     public function bankAccount()
@@ -69,5 +73,22 @@ class User extends Authenticatable
     public function userSubscriptions()
     {
         return $this->hasMany(UserSubscriptionPlan::class, 'user_id');
+    }
+
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id');
+    }
+
+    public function companyInformation(): HasOne
+    {
+        return $this->hasOne(CompanyInformation::class);
+    }
+
+    public function permissions()
+    {
+        return $this->roles->flatMap(function ($role) {
+            return $role->permissions;
+        })->unique('id');
     }
 }

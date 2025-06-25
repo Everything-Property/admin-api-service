@@ -13,7 +13,15 @@ class ReportController extends Controller
     public function index()
     {
         // Total number of staff (users with 'ROLE_SUPERADMIN')
-        $totalStaffs = User::whereJsonContains('roles', 'ROLE_SUPERADMIN')->count();
+        // Define the array of staff roles to include in the count
+    $staffRoles = ['ROLE_ADMIN', 'ROLE_STAFF_MEDIA', 'ROLE_STAFF_IT', 'ROLE_AGENT'];
+
+    // Count users with any of the specified staff roles
+    $totalStaffs = User::where(function ($query) use ($staffRoles) {
+        foreach ($staffRoles as $role) {
+            $query->orWhereJsonContains('roles', $role);
+        }
+    })->count();
 
         // Total number of users
         $totalUsers = User::count();
@@ -77,4 +85,5 @@ class ReportController extends Controller
             'scheduledViewings' => $scheduledViewings,
         ]);
     }
+    
 }

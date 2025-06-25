@@ -4,28 +4,21 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class UserInformation extends Model
+class CompanyInformation extends Model
 {
     use HasFactory;
+
     public $timestamps = false;
-
-    protected $table = 'user_information';
-
-
 
     protected $fillable = [
         'user_id',
-        'address',
-        'website',
-        'biography',
-        'facebook',
-        'instagram',
-        'whatsapp',
         'company_name',
+        'rc_number',
     ];
 
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }

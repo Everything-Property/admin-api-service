@@ -23,6 +23,7 @@ class SubscriptionPlanResource extends JsonResource
             'recommended' => $this->recommended,
             'created_at' => $this->created_at,
             'updated_at' => $this->modified_at,
+            'user_count' => $this->userSubscriptions->count(),
         ];
     }
 }

@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class SettingController extends Controller
 {
@@ -27,20 +30,29 @@ class SettingController extends Controller
 
     public function updateProfileSettings(Request $request)
     {
-
-
         $user_id = 16;
         $settings = Setting::firstOrCreate(['user_id' => $user_id]);
 
         $request->validate([
             'name' => 'string|nullable',
             'email' => 'email|nullable',
-            'logo' => 'string|nullable',
+            'logo' => 'file|image|mimes:jpeg,png,jpg,gif|max:2048|nullable',
         ]);
+
+        // Handle image upload if provided
+        if ($request->hasFile('logo')) {
+            // Delete the old logo if it exists
+            if ($settings->logo) {
+                Storage::delete($settings->logo);
+            }
+
+            // Store the new image
+            $path = $request->file('logo')->store('logos');
+            $settings->logo = $path;
+        }
 
         $settings->name = $request->input('name', $settings->name);
         $settings->email = $request->input('email', $settings->email);
-        $settings->logo = $request->input('logo', $settings->logo);
         $settings->save();
 
         return response()->json([
@@ -77,8 +89,8 @@ class SettingController extends Controller
 
     public function getNotificationSettings()
     {
-        $user = auth()->user();
-        $settings = Setting::where('user_id', $user->id)->first();
+        $user_id = 16;
+        $settings = Setting::where('user_id', $user_id)->first();
 
         return response()->json([
             'push_notification' => $settings->push_notification,
@@ -89,8 +101,8 @@ class SettingController extends Controller
 
     public function updateNotificationSettings(Request $request)
     {
-        $user = auth()->user();
-        $settings = Setting::firstOrCreate(['user_id' => $user->id]);
+        $user_id = 16;
+        $settings = Setting::firstOrCreate(['user_id' => $user_id]);
 
         $request->validate([
             'push_notification' => 'boolean|nullable',
@@ -111,19 +123,18 @@ class SettingController extends Controller
 
     public function getPrivacySettings()
     {
-        $user = auth()->user();
-        $settings = Setting::where('user_id', $user->id)->first();
+        $user_id = 16;
+        $settings = Setting::where('user_id', $user_id)->first();
 
         return response()->json([
             'privacy' => $settings->privacy,
         ], 200);
     }
 
-
     public function updatePrivacySettings(Request $request)
     {
-        $user = auth()->user();
-        $settings = Setting::firstOrCreate(['user_id' => $user->id]);
+        $user_id = 16;
+        $settings = Setting::firstOrCreate(['user_id' => $user_id]);
 
         $request->validate([
             'privacy' => 'in:private,public|nullable',
@@ -138,11 +149,10 @@ class SettingController extends Controller
         ], 200);
     }
 
-
     public function getAppPreferenceSettings()
     {
-        $user = auth()->user();
-        $settings = Setting::where('user_id', $user->id)->first();
+        $user_id = 16;
+        $settings = Setting::where('user_id', $user_id)->first();
 
         return response()->json([
             'dark_mode' => $settings->dark_mode,
@@ -152,8 +162,8 @@ class SettingController extends Controller
 
     public function updateAppPreferenceSettings(Request $request)
     {
-        $user = auth()->user();
-        $settings = Setting::firstOrCreate(['user_id' => $user->id]);
+        $user_id = 16;
+        $settings = Setting::firstOrCreate(['user_id' => $user_id]);
 
         $request->validate([
             'dark_mode' => 'boolean|nullable',
@@ -172,8 +182,8 @@ class SettingController extends Controller
 
     public function getSecuritySettings()
     {
-        $user = auth()->user();
-        $settings = Setting::where('user_id', $user->id)->first();
+        $user_id = 16;
+        $settings = Setting::where('user_id', $user_id)->first();
 
         return response()->json([
             'two_factor_auth' => $settings->two_factor_auth,
@@ -182,8 +192,8 @@ class SettingController extends Controller
 
     public function updateSecuritySettings(Request $request)
     {
-        $user = auth()->user();
-        $settings = Setting::firstOrCreate(['user_id' => $user->id]);
+        $user_id = 16;
+        $settings = Setting::firstOrCreate(['user_id' => $user_id]);
 
         $request->validate([
             'two_factor_auth' => 'boolean|nullable',
@@ -199,7 +209,103 @@ class SettingController extends Controller
     }
 
 
+    public function getSocialMediaLinks()
+    {
+        $user_id = 16;
+        $settings = Setting::where('user_id', $user_id)->first();
 
+        if (!$settings) {
+            return response()->json([
+                'message' => 'Settings not found for this user.',
+            ], 404);
+        }
+
+        return response()->json([
+            'facebook' => $settings->facebook,
+            'instagram' => $settings->instagram,
+            'linkedin' => $settings->linkedin,
+            'twitter' => $settings->twitter,
+        ], 200);
+    }
+
+    public function updateSocialMediaLinks(Request $request)
+    {
+        $user_id = 16;
+        $settings = Setting::firstOrCreate(['user_id' => $user_id]);
+
+        $request->validate([
+            'facebook' => 'nullable|url',
+            'instagram' => 'nullable|url',
+            'linkedin' => 'nullable|url',
+            'twitter' => 'nullable|url',
+        ]);
+
+        $settings->facebook = $request->input('facebook', $settings->facebook);
+        $settings->instagram = $request->input('instagram', $settings->instagram);
+        $settings->linkedin = $request->input('linkedin', $settings->linkedin);
+        $settings->twitter = $request->input('twitter', $settings->twitter);
+        $settings->save();
+
+        return response()->json([
+            'message' => 'Social media links updated successfully.',
+            'data' => [
+                'facebook' => $settings->facebook,
+                'instagram' => $settings->instagram,
+                'linkedin' => $settings->linkedin,
+                'twitter' => $settings->twitter,
+            ],
+        ], 200);
+    }
+
+    public function getWebsiteInformation(): JsonResponse
+    {
+        $setting = Setting::first();
+
+        if (!$setting) {
+            return response()->json(['message' => 'Website information not found'], 404);
+        }
+
+        $websiteInformation = [
+            'name' => $setting->name,
+            'logo' => asset('storage/' . $setting->logo),
+            'email' => $setting->email,
+            'social_media' => [
+                'facebook' => $setting->facebook,
+                'instagram' => $setting->instagram,
+                'linkedin' => $setting->linkedin,
+                'twitter' => $setting->twitter,
+            ],
+        ];
+
+        return response()->json($websiteInformation, 200);
+    }
+
+    public function getCountries(): JsonResponse
+    {
+        $countries = DB::table('country')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $countries,
+        ]);
+    }
+    
+    
+    
+public function getApiLogs(Request $request): JsonResponse
+{
+    $perPage = $request->input('per_page', 15); // Default to 15 items per page
+    $page = $request->input('page', 1); // Default to page 1
+    $api_log = DB::table('api_logs')
+        ->orderBy('created_at', 'desc') // Sort by created_at in descending order
+        ->paginate($perPage, ['*'], 'page', $page);
+
+    return response()->json([
+        'success' => true,
+        'data' => $api_log,
+    ]);
+}
+    
 
 
 }

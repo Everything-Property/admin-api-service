@@ -12,11 +12,11 @@ class Property extends Model
     protected $table = 'property';
 
     protected $fillable = [
-        'type_id',
-        'category_id',
+        'agent_id',
         'title',
         'slug',
-        'price',
+        'type_id',
+        'category_id',
         'keywords',
         'address',
         'longitude',
@@ -25,11 +25,10 @@ class Property extends Model
         'bathroom',
         'garage',
         'description',
+        'amenities',
         'area',
-        'user_id',
-        'state_locality_id',
-        'inspection_fee',
-        'project_id',
+        'price',
+        'is_active'
     ];
 
     public function user()
@@ -44,4 +43,33 @@ class Property extends Model
         return $this->belongsTo(PropertyType::class, 'type_id');
     }
 
+    public function category()
+    {
+        return $this->belongsTo(PropertyCategory::class, 'category_id');
+    }
+
+    public function propertyMedia()
+    {
+        return $this->hasMany(PropertyMedia::class);
+    }
+
+    public function propertyRooms()
+    {
+        return $this->hasMany(PropertyRoom::class);
+    }
+
+    public function agent()
+    {
+        return $this->belongsTo(Agent::class, 'user_id', 'user_id');
+    }
+
+    public function propertyVideoLinks()
+    {
+        return $this->hasMany(PropertyVideoLink::class);
+    }
+
+    //remove the updated_at column from the property model
+    public $timestamps = false;
+
 }
+

@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Permission;
 use Illuminate\Http\Request;
+use App\Traits\ApiResponseTrait;
 
 class PermissionController extends Controller
 {
     //
+    
+     use ApiResponseTrait;
 
     public function index()
     {
@@ -71,6 +74,33 @@ class PermissionController extends Controller
             'message' => 'Permission deleted successfully.',
         ], 200);
     }
+    
+    
+    
+    //permission enums
+    
+public function getAllPermissions()
+    {
+        try {
+            // Fetch all permissions
+            $permissions = Permission::all();
+
+            // Transform the permissions
+            $transformedPermissions = [];
+            foreach ($permissions as $permission) {
+                $key = strtoupper(str_replace(' ', '_', $permission->name));
+                $transformedPermissions[$key] = $permission->name;
+            }
+
+            // Return success response using trait
+            return $this->successResponse($transformedPermissions, 'Permissions enums fetched successfully');
+
+        } catch (\Exception $e) {
+            // Return failure response using trait
+            return $this->failureResponse('Failed to fetch permissions', 500, ['error' => $e->getMessage()]);
+        }
+    }
+
 
 
 
