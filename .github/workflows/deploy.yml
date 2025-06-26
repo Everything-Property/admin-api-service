@@ -74,22 +74,28 @@ jobs:
           ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "mkdir -p domains/everythingproperty.ng/public_html/api/admin"
           echo "Directory created successfully"
 
-      - name: Clean deployment directory
+      - name: Backup existing configuration files
         run: |
-          echo "Cleaning deployment directory..."
-          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "rm -rf domains/everythingproperty.ng/public_html/api/admin/* domains/everythingproperty.ng/public_html/api/admin/.[^.]* 2>/dev/null || true"
-          echo "Directory cleaned successfully"
+          echo "Backing up existing configuration files..."
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd domains/everythingproperty.ng/public_html/api/admin && [ -f .env ] && cp .env .env.backup || echo 'No .env to backup' && [ -f .htaccess ] && cp .htaccess .htaccess.backup || echo 'No .htaccess to backup' && [ -f public/.htaccess ] && cp public/.htaccess public/.htaccess.backup || echo 'No public/.htaccess to backup'"
+          echo "Backup completed"
 
       - name: Deploy to Hostinger
         uses: burnett01/rsync-deployments@5.2.1
         with:
-          switches: -avzr --delete --exclude '.git' --exclude '.github' --exclude 'node_modules' --exclude '.DS_Store' --exclude 'tests' --exclude 'storage' --exclude '.env' --exclude '.htaccess' --exclude 'public/.htaccess'
+          switches: -avzr --exclude '.git' --exclude '.github' --exclude 'node_modules' --exclude '.DS_Store' --exclude 'tests' --exclude 'storage' --exclude '.env' --exclude '.htaccess' --exclude 'public/.htaccess'
           path: ./
           remote_path: domains/everythingproperty.ng/public_html/api/admin/
           remote_host: 145.223.76.158
           remote_user: u179209572
           remote_key: ${{ secrets.HOSTINGER_SSH_KEY }}
           remote_port: 65002
+
+      - name: Restore configuration files
+        run: |
+          echo "Restoring configuration files..."
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd domains/everythingproperty.ng/public_html/api/admin && [ -f .env.backup ] && mv .env.backup .env || echo 'No .env backup to restore' && [ -f .htaccess.backup ] && mv .htaccess.backup .htaccess || echo 'No .htaccess backup to restore' && [ -f public/.htaccess.backup ] && mv public/.htaccess.backup public/.htaccess || echo 'No public/.htaccess backup to restore'"
+          echo "Configuration files restored"
 
       - name: Verify deployment
         run: |
