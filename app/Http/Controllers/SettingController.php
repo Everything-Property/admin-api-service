@@ -264,6 +264,7 @@ class SettingController extends Controller
         if (!$setting) {
             return response()->json(['message' => 'Website information not found'], 404);
         }
+        
 
         $websiteInformation = [
             'name' => $setting->name,
