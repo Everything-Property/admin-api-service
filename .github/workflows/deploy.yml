@@ -106,7 +106,7 @@ jobs:
       - name: Setup Laravel environment
         run: |
           echo "Setting up Laravel environment..."
-          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd domains/everythingproperty.ng/public_html/api/admin && [ ! -f .env ] && cp .env.example .env || echo '.env already exists, skipping' && chmod -R 755 storage bootstrap/cache && echo 'Laravel environment setup completed'"
+          ssh -p 65002 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no u179209572@145.223.76.158 "cd domains/everythingproperty.ng/public_html/api/admin && [ ! -f .env ] && cp .env.example .env || echo '.env already exists, skipping' && chmod -R 755 bootstrap/cache && echo 'Laravel environment setup completed'"
           echo "Environment setup completed"
 
       - name: Generate Laravel key
