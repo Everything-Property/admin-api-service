@@ -41,6 +41,7 @@ class BoostSubscriptionController extends Controller
         }
     }
 
+
     /**
      * Get available boost plans for the authenticated user or by role
      */
