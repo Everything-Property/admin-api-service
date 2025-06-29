@@ -11,7 +11,6 @@ use App\Http\Controllers\AdminActivityLogController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebsiteContentController;
-use App\Http\Controllers\PropertyController;
 use App\Http\Controllers\Api\BoostSubscriptionController;
 
 // Route::get('/user', function (Request $request) {
@@ -140,13 +139,12 @@ Route::prefix('website-content')->group(function () {
 
 // Boost Subscription Routes
 
-// Public endpoint for getting available plans
-
-
+// Public endpoints for getting available plans
+Route::get('/boost-subscriptions/plans', [BoostSubscriptionController::class, 'getPlans']);
+Route::get('/boost-subscriptions/all-plans', [BoostSubscriptionController::class, 'getAllPlans']);
 
 // Protected boost subscription routes
 Route::group(['prefix' => 'boost-subscriptions'], function () {
-    Route::get('/plans', [BoostSubscriptionController::class, 'getPlans']);
     Route::get('/current', [BoostSubscriptionController::class, 'getCurrentSubscription']);
     Route::get('/history', [BoostSubscriptionController::class, 'getSubscriptionHistory']);
     Route::post('/initialize-payment', [BoostSubscriptionController::class, 'initializePayment']);
@@ -161,12 +159,8 @@ Route::group(['prefix' => 'admin'], function () {
 
     Route::post('/login', [UserController::class, 'adminLogin']);
 
-    //all properties
-    Route::get('/properties', [PropertyController::class, 'getAllProperties']);
-
-    //delist property
-    Route::post('/delist-property', [PropertyController::class, 'delistProperty']);
-
-    //relist property
-    Route::post('/relist-property', [PropertyController::class, 'relistProperty']);
+    // Property routes can be added here when PropertyController is created
+    // Route::get('/properties', [PropertyController::class, 'getAllProperties']);
+    // Route::post('/delist-property', [PropertyController::class, 'delistProperty']);
+    // Route::post('/relist-property', [PropertyController::class, 'relistProperty']);
 });

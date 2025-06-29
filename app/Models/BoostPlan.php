@@ -58,17 +58,22 @@ class BoostPlan extends Model
     public function getPriceForAccountType(string $accountType, string $billingCycle = 'monthly'): float
     {
         $pricing = $this->pricing()->where('account_type', $accountType)->first();
-        
-        $basePrice = $this->base_price;
-        
+
         if ($pricing) {
-            if ($pricing->custom_price) {
-                $basePrice = $pricing->custom_price;
-            } else {
-                $basePrice = $this->base_price * $pricing->price_multiplier;
+            // Use the direct pricing from the pricing table
+            switch ($billingCycle) {
+                case 'quarterly':
+                    return (float) $pricing->quarterly_price;
+                case 'yearly':
+                    return (float) $pricing->yearly_price;
+                default:
+                    return (float) $pricing->monthly_price;
             }
         }
-        
+
+        // Fallback to base price with discounts if no specific pricing found
+        $basePrice = (float) $this->base_price;
+
         // Apply discounts based on billing cycle
         switch ($billingCycle) {
             case 'quarterly':

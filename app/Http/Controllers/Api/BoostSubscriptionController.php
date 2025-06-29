@@ -4,20 +4,27 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BoostPlan;
+use App\Models\User;
 use App\Models\UserBoostSubscription;
 use App\Services\BoostSubscriptionService;
+use App\Services\HashidsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+use Exception;
 
 class BoostSubscriptionController extends Controller
 {
     private BoostSubscriptionService $boostSubscriptionService;
+    private HashidsService $hashidsService;
 
-    public function __construct(BoostSubscriptionService $boostSubscriptionService)
-    {
+    public function __construct(
+        BoostSubscriptionService $boostSubscriptionService,
+        HashidsService $hashidsService
+    ) {
         $this->boostSubscriptionService = $boostSubscriptionService;
+        $this->hashidsService = $hashidsService;
     }
 
     /**
@@ -41,19 +48,34 @@ class BoostSubscriptionController extends Controller
         }
     }
 
-
     /**
-     * Get available boost plans for the authenticated user or by role
+     * Get available boost plans for a user or by role
      */
     public function getPlans(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'nullable|string',
+            'user_role' => 'nullable|string|in:broker,company,developer'
+        ]);
 
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
         try {
-            $user = Auth::user();
-            $userRole = $request->input('user_role'); // Optional role parameter
+            $user = null;
+            if ($request->has('user_id') && $request->user_id) {
+                $decodedUserId = $this->hashidsService->decode($request->user_id);
+                if ($decodedUserId) {
+                    $user = User::find($decodedUserId);
+                }
+            }
 
-            // dd( $userRole);
+            $userRole = $request->input('user_role');
             $plans = $this->boostSubscriptionService->getAvailablePlans($user, $userRole);
 
             return response()->json([
@@ -72,10 +94,30 @@ class BoostSubscriptionController extends Controller
     /**
      * Get user's current subscription
      */
-    public function getCurrentSubscription(): JsonResponse
+    public function getCurrentSubscription(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
-            $user = Auth::user();
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
             $subscription = $this->boostSubscriptionService->getCurrentSubscription($user);
 
             if (!$subscription) {
@@ -124,9 +166,9 @@ class BoostSubscriptionController extends Controller
     public function initializePayment(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
+            'user_id' => 'required|string',
             'boost_plan_id' => 'required|integer|exists:boost_plans,id',
             'billing_cycle' => 'required|string|in:monthly,quarterly,yearly',
-            'redirect_url' => 'required|url'
         ]);
 
         if ($validator->fails()) {
@@ -138,12 +180,25 @@ class BoostSubscriptionController extends Controller
         }
 
         try {
-            $user = Auth::user();
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
+
+            // Use default redirect URL from configuration
+            $redirectUrl = config('services.flutterwave.redirect_url', 'https://everythingproperty.ng/payment/callback');
+
             $result = $this->boostSubscriptionService->initializeSubscriptionPayment(
                 $user,
                 $request->boost_plan_id,
                 $request->billing_cycle,
-                $request->redirect_url
+                $redirectUrl
             );
 
             if ($result['status'] === 'success') {
@@ -167,12 +222,63 @@ class BoostSubscriptionController extends Controller
     }
 
     /**
+     * Get user from request (decoded from Symfony's hashids)
+     */
+    private function getUserFromRequest(Request $request): ?User
+    {
+        $encodedUserId = $request->header('X-User-ID');
+
+        if (!$encodedUserId) {
+            return null;
+        }
+
+        try {
+            $userId = $this->hashidsService->decode($encodedUserId);
+            return User::find($userId);
+        } catch (Exception $e) {
+            Log::warning('Failed to decode user ID from request', [
+                'encoded_user_id' => $encodedUserId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
      * Verify payment and activate subscription
      */
     public function verifyPayment(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        $request->validate([
             'transaction_id' => 'required|string'
+        ]);
+
+        $transactionId = $request->input('transaction_id');
+        $user = $this->getUserFromRequest($request);
+
+        $result = $this->boostSubscriptionService->verifyAndActivateSubscription($transactionId, $user);
+
+        if ($result['status'] === 'success') {
+            return response()->json([
+                'status' => 'success',
+                'message' => $result['message'],
+                'subscription' => $result['subscription']
+            ], 200);
+        } else {
+            return response()->json([
+                'status' => 'error',
+                'message' => $result['message']
+            ], 400);
+        }
+    }
+
+    /**
+     * Get subscription history for a user
+     */
+    public function getSubscriptionHistory(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'required|string'
         ]);
 
         if ($validator->fails()) {
@@ -184,38 +290,15 @@ class BoostSubscriptionController extends Controller
         }
 
         try {
-            $result = $this->boostSubscriptionService->verifyAndActivateSubscription(
-                $request->transaction_id
-            );
-
-            if ($result['status'] === 'success') {
-                return response()->json([
-                    'status' => 'success',
-                    'message' => $result['message'],
-                    'data' => $result['subscription'] ?? null
-                ]);
-            } else {
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => $result['message']
+                    'message' => 'Invalid user ID'
                 ], 400);
             }
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to verify payment',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 
-    /**
-     * Get subscription history for the authenticated user
-     */
-    public function getSubscriptionHistory(): JsonResponse
-    {
-        try {
-            $user = Auth::user();
+            $user = User::findOrFail($decodedUserId);
             $subscriptions = UserBoostSubscription::forUser($user->id)
                 ->with('boostPlan')
                 ->orderBy('created_at', 'desc')
@@ -237,10 +320,30 @@ class BoostSubscriptionController extends Controller
     /**
      * Cancel auto-renewal for current subscription
      */
-    public function cancelAutoRenewal(): JsonResponse
+    public function cancelAutoRenewal(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
-            $user = Auth::user();
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
             $subscription = $this->boostSubscriptionService->getCurrentSubscription($user);
 
             if (!$subscription) {
@@ -268,10 +371,30 @@ class BoostSubscriptionController extends Controller
     /**
      * Enable auto-renewal for current subscription
      */
-    public function enableAutoRenewal(): JsonResponse
+    public function enableAutoRenewal(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
-            $user = Auth::user();
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
             $subscription = $this->boostSubscriptionService->getCurrentSubscription($user);
 
             if (!$subscription) {
@@ -299,10 +422,30 @@ class BoostSubscriptionController extends Controller
     /**
      * Check viewing request quota
      */
-    public function checkViewingQuota(): JsonResponse
+    public function checkViewingQuota(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
-            $user = Auth::user();
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
             $quotaInfo = $this->boostSubscriptionService->canMakeFreeViewingRequest($user);
 
             return response()->json([
@@ -324,6 +467,7 @@ class BoostSubscriptionController extends Controller
     public function createViewingRequest(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
+            'user_id' => 'required|string',
             'property_id' => 'required|integer|exists:properties,id',
             'force_paid' => 'boolean'
         ]);
@@ -337,7 +481,15 @@ class BoostSubscriptionController extends Controller
         }
 
         try {
-            $user = Auth::user();
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
             $result = $this->boostSubscriptionService->createViewingRequest(
                 $user,
                 $request->property_id,

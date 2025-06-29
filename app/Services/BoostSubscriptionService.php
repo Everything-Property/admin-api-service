@@ -8,6 +8,7 @@ use App\Models\UserBoostSubscription;
 use App\Models\UserViewingRequest;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class BoostSubscriptionService
@@ -49,9 +50,6 @@ class BoostSubscriptionService
             ->get();
 
         return $plans->map(function ($plan) use ($userAccountType) {
-            // Get pricing from the relationship
-            $pricing = $plan->pricing->where('account_type', $userAccountType)->first();
-
             return [
                 'id' => $plan->id,
                 'name' => $plan->name,
@@ -60,9 +58,9 @@ class BoostSubscriptionService
                 'free_viewing_requests_per_month' => $plan->free_viewing_requests_per_month,
                 'is_recommended' => $plan->is_recommended,
                 'pricing' => [
-                    'monthly' => $pricing ? $pricing->monthly_price : $plan->base_price,
-                    'quarterly' => $pricing ? $pricing->quarterly_price : ($plan->base_price * 3 * (1 - $plan->quarterly_discount / 100)),
-                    'yearly' => $pricing ? $pricing->yearly_price : ($plan->base_price * 12 * (1 - $plan->yearly_discount / 100)),
+                    'monthly' => $plan->getPriceForAccountType($userAccountType, 'monthly'),
+                    'quarterly' => $plan->getPriceForAccountType($userAccountType, 'quarterly'),
+                    'yearly' => $plan->getPriceForAccountType($userAccountType, 'yearly'),
                 ],
                 'discounts' => [
                     'quarterly' => $plan->quarterly_discount,
@@ -75,7 +73,7 @@ class BoostSubscriptionService
     /**
      * Get all available boost plans grouped by account type
      */
-    private function getAllPlansGroupedByRole(): array
+    public function getAllPlansGroupedByRole(): array
     {
         $accountTypes = ['ROLE_BROKER', 'ROLE_COMPANY', 'ROLE_DEVELOPER'];
         $result = [];
@@ -94,8 +92,6 @@ class BoostSubscriptionService
             $roleKey = strtolower(str_replace('ROLE_', '', $accountType));
 
             $result[$roleKey] = $plans->map(function ($plan) use ($accountType) {
-                $pricing = $plan->pricing->where('account_type', $accountType)->first();
-
                 return [
                     'id' => $plan->id,
                     'name' => $plan->name,
@@ -104,9 +100,9 @@ class BoostSubscriptionService
                     'free_viewing_requests_per_month' => $plan->free_viewing_requests_per_month,
                     'is_recommended' => $plan->is_recommended,
                     'pricing' => [
-                        'monthly' => $pricing ? $pricing->monthly_price : $plan->base_price,
-                        'quarterly' => $pricing ? $pricing->quarterly_price : ($plan->base_price * 3 * (1 - $plan->quarterly_discount / 100)),
-                        'yearly' => $pricing ? $pricing->yearly_price : ($plan->base_price * 12 * (1 - $plan->yearly_discount / 100)),
+                        'monthly' => $plan->getPriceForAccountType($accountType, 'monthly'),
+                        'quarterly' => $plan->getPriceForAccountType($accountType, 'quarterly'),
+                        'yearly' => $plan->getPriceForAccountType($accountType, 'yearly'),
                     ],
                     'discounts' => [
                         'quarterly' => $plan->quarterly_discount,
@@ -142,23 +138,52 @@ class BoostSubscriptionService
             $boostPlan = BoostPlan::findOrFail($boostPlanId);
             $userAccountType = $this->getUserAccountType($user);
 
-            // Get pricing from the relationship
-            $pricing = $boostPlan->pricing()->where('account_type', $userAccountType)->first();
+            // Debug information
+            Log::info('Boost subscription payment initialization', [
+                'user_id' => $user->id,
+                'boost_plan_id' => $boostPlanId,
+                'billing_cycle' => $billingCycle,
+                'user_account_type' => $userAccountType,
+                'boost_plan_name' => $boostPlan->name,
+                'boost_plan_base_price' => $boostPlan->base_price,
+                'user_roles' => $user->roles,
+            ]);
 
-            // Calculate pricing
-            $basePrice = $pricing ? $pricing->monthly_price : $boostPlan->base_price;
+            // Use the BoostPlan's built-in pricing method
+            $amount = $boostPlan->getPriceForAccountType($userAccountType, $billingCycle);
 
-            switch ($billingCycle) {
-                case 'quarterly':
-                    $amount = $pricing ? $pricing->quarterly_price : ($boostPlan->base_price * 3 * (1 - $boostPlan->quarterly_discount / 100));
-                    break;
-                case 'yearly':
-                    $amount = $pricing ? $pricing->yearly_price : ($boostPlan->base_price * 12 * (1 - $boostPlan->yearly_discount / 100));
-                    break;
-                default: // monthly
-                    $amount = $basePrice;
-                    break;
+            // Debug the calculated amount
+            Log::info('Calculated amount', [
+                'amount' => $amount,
+                'account_type' => $userAccountType,
+                'billing_cycle' => $billingCycle,
+            ]);
+
+            // Check if this is a free plan
+            if ($amount == 0) {
+                return [
+                    'status' => 'error',
+                    'message' => 'Cannot subscribe to a free plan. Please select a paid plan.'
+                ];
             }
+
+            // Validate calculated amount
+            if (!$amount || $amount <= 0) {
+                Log::error('Invalid amount calculated', [
+                    'amount' => $amount,
+                    'user_account_type' => $userAccountType,
+                    'billing_cycle' => $billingCycle,
+                    'boost_plan_id' => $boostPlanId,
+                ]);
+
+                return [
+                    'status' => 'error',
+                    'message' => 'Invalid amount calculated for billing cycle. Please contact support.'
+                ];
+            }
+
+            // Ensure amount is at least 1 (Flutterwave requirement)
+            $amount = max(1, $amount);
 
             // Calculate discount applied
             $discountApplied = 0;
@@ -227,6 +252,10 @@ class BoostSubscriptionService
             }
         } catch (Exception $e) {
             DB::rollBack();
+            Log::error('Boost subscription payment initialization error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [
                 'status' => 'error',
                 'message' => 'Failed to initialize subscription payment: ' . $e->getMessage()
@@ -237,11 +266,12 @@ class BoostSubscriptionService
     /**
      * Verify and activate subscription after payment
      */
-    public function verifyAndActivateSubscription(string $transactionId): array
+    public function verifyAndActivateSubscription(string $transactionId, ?User $user = null): array
     {
         try {
             DB::beginTransaction();
 
+            // Find the subscription by transaction reference
             $subscription = UserBoostSubscription::where('flutterwave_transaction_id', $transactionId)
                 ->where('status', 'pending')
                 ->first();
@@ -253,10 +283,47 @@ class BoostSubscriptionService
                 ];
             }
 
+            // If user is provided, verify it matches the subscription
+            if ($user && $subscription->user_id !== $user->id) {
+                return [
+                    'status' => 'error',
+                    'message' => 'This transaction does not belong to you'
+                ];
+            }
+
             // Verify payment with Flutterwave
             $verificationResponse = $this->flutterwaveService->verifyPayment($transactionId);
 
             if ($verificationResponse['status'] === 'success' && $verificationResponse['is_successful']) {
+                $flutterwaveData = $verificationResponse['data'];
+
+                // Additional security checks
+                $expectedAmount = $subscription->amount_paid;
+                $actualAmount = (float) $flutterwaveData['amount'];
+
+                // Verify amount matches (with small tolerance for currency conversion)
+                if (abs($actualAmount - $expectedAmount) > 1) {
+                    Log::warning('Amount mismatch in payment verification', [
+                        'transaction_id' => $transactionId,
+                        'expected_amount' => $expectedAmount,
+                        'actual_amount' => $actualAmount,
+                        'subscription_id' => $subscription->id
+                    ]);
+
+                    return [
+                        'status' => 'error',
+                        'message' => 'Payment amount mismatch detected'
+                    ];
+                }
+
+                // Verify currency
+                if ($flutterwaveData['currency'] !== 'NGN') {
+                    return [
+                        'status' => 'error',
+                        'message' => 'Invalid currency detected'
+                    ];
+                }
+
                 // Deactivate any existing active subscriptions for this user
                 UserBoostSubscription::forUser($subscription->user_id)
                     ->active()
@@ -265,7 +332,7 @@ class BoostSubscriptionService
                 // Activate the new subscription
                 $subscription->update([
                     'status' => 'active',
-                    'flutterwave_response' => $verificationResponse['data']
+                    'flutterwave_response' => json_encode($verificationResponse['data'])
                 ]);
 
                 DB::commit();
@@ -276,20 +343,26 @@ class BoostSubscriptionService
                     'subscription' => $subscription->load('boostPlan')
                 ];
             } else {
+                // Payment failed or was cancelled
                 $subscription->update([
                     'status' => 'cancelled',
-                    'flutterwave_response' => $verificationResponse['data'] ?? null
+                    'flutterwave_response' => json_encode($verificationResponse['data'] ?? null)
                 ]);
 
                 DB::commit();
 
                 return [
                     'status' => 'error',
-                    'message' => 'Payment verification failed'
+                    'message' => 'Payment verification failed: ' . ($verificationResponse['message'] ?? 'Unknown error')
                 ];
             }
         } catch (Exception $e) {
             DB::rollBack();
+            Log::error('Boost subscription verification error', [
+                'transaction_id' => $transactionId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [
                 'status' => 'error',
                 'message' => 'Failed to verify subscription: ' . $e->getMessage()

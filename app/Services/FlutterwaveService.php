@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Exception;
+use App\Models\UserBoostSubscription;
 
 class FlutterwaveService
 {
@@ -91,7 +92,7 @@ class FlutterwaveService
 
             if ($response->successful()) {
                 $data = $response->json()['data'];
-                
+
                 return [
                     'status' => 'success',
                     'data' => $data,
@@ -181,14 +182,30 @@ class FlutterwaveService
         // This is a simplified calculation - you may want to adjust based on actual fee structure
         $feePercentage = 1.4;
         $fixedFee = ($currency === 'NGN') ? 100 : 0;
-        
+
         $fee = ($amount * $feePercentage / 100) + $fixedFee;
         $totalAmount = $amount + $fee;
-        
+
         return [
             'original_amount' => $amount,
             'fee' => round($fee, 2),
             'total_amount' => round($totalAmount, 2)
         ];
+    }
+
+    public function verifyAndActivateSubscription(string $transactionId): array
+    {
+        // Find subscription by transaction_id
+        $subscription = UserBoostSubscription::where('flutterwave_transaction_id', $transactionId)
+            ->where('status', 'pending')
+            ->first();
+
+        // Verify with Flutterwave
+        $verificationResponse = $this->verifyPayment($transactionId);
+
+        if ($verificationResponse['status'] === 'success' && $verificationResponse['is_successful']) {
+            // Activate subscription
+            $subscription->update(['status' => 'active']);
+        }
     }
 }
