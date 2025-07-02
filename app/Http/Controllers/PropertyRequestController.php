@@ -190,7 +190,7 @@ class PropertyRequestController extends Controller
                         'current_year' => $currentYear,
                         'has_subscription' => $subscription ? true : false
                     ]
-                ], 403);
+                ], 200);
             }
 
             // User is eligible to view - record the viewing
