@@ -47,4 +47,19 @@ class PropertyRequest extends Model
     {
         return $this->belongsTo(State::class, 'state_id');
     }
+
+    public function stateLocality()
+    {
+        return $this->belongsTo(StateLocality::class, 'state_locality_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function viewingRequests()
+    {
+        return $this->hasMany(UserViewingRequest::class, 'property_request_id');
+    }
 }

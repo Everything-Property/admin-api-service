@@ -15,6 +15,7 @@ class UserViewingRequest extends Model
     protected $fillable = [
         'user_id',
         'property_id',
+        'property_request_id',
         'request_type',
         'amount_charged',
         'year',
@@ -23,6 +24,7 @@ class UserViewingRequest extends Model
         'requested_at',
         'scheduled_at',
         'notes',
+        'flutterwave_transaction_id',
     ];
 
     protected $casts = [
@@ -47,6 +49,14 @@ class UserViewingRequest extends Model
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    /**
+     * Get the property request for this viewing request
+     */
+    public function propertyRequest(): BelongsTo
+    {
+        return $this->belongsTo(PropertyRequest::class);
     }
 
     /**

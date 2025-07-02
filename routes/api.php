@@ -8,6 +8,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\AdminActivityLogController;
+use App\Http\Controllers\PropertyRequestController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebsiteContentController;
@@ -155,9 +156,21 @@ Route::group(['prefix' => 'boost-subscriptions'], function () {
     Route::post('/viewing-request', [BoostSubscriptionController::class, 'createViewingRequest']);
 });
 
+// Property Request Routes
+Route::group(['prefix' => 'property-requests'], function () {
+    Route::get('/', [PropertyRequestController::class, 'index']);
+    Route::get('/{id}', [PropertyRequestController::class, 'show']);
+    Route::post('/get-details', [PropertyRequestController::class, 'getPropertyRequestDetails']);
+    Route::post('/viewing-quota', [PropertyRequestController::class, 'getViewingQuota']);
+    Route::post('/initialize-property-pay-now', [PropertyRequestController::class, 'initializePropertyPayNow']);
+    Route::post('/verify-property-payment', [PropertyRequestController::class, 'verifyPropertyPayment']);
+});
+
 Route::group(['prefix' => 'admin'], function () {
 
     Route::post('/login', [UserController::class, 'adminLogin']);
+
+
 
     // Property routes can be added here when PropertyController is created
     // Route::get('/properties', [PropertyController::class, 'getAllProperties']);

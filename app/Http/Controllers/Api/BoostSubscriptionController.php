@@ -192,7 +192,7 @@ class BoostSubscriptionController extends Controller
             $user = User::findOrFail($decodedUserId);
 
             // Use default redirect URL from configuration
-            $redirectUrl = config('services.flutterwave.redirect_url', 'https://everythingproperty.ng/payment/callback');
+            $redirectUrl = config('services.flutterwave.redirect_url', 'http://localhost:3000/payment/callback');
 
             $result = $this->boostSubscriptionService->initializeSubscriptionPayment(
                 $user,
