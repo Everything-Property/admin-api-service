@@ -249,26 +249,53 @@ class BoostSubscriptionController extends Controller
      */
     public function verifyPayment(Request $request): JsonResponse
     {
-        $request->validate([
-            'transaction_id' => 'required|string'
+        $validator = Validator::make($request->all(), [
+            'transaction_id' => 'required|string',
+            'user_id' => 'required|string'
         ]);
 
-        $transactionId = $request->input('transaction_id');
-        $user = $this->getUserFromRequest($request);
-
-        $result = $this->boostSubscriptionService->verifyAndActivateSubscription($transactionId, $user);
-
-        if ($result['status'] === 'success') {
-            return response()->json([
-                'status' => 'success',
-                'message' => $result['message'],
-                'subscription' => $result['subscription']
-            ], 200);
-        } else {
+        if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'message' => $result['message']
-            ], 400);
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $transactionId = $request->input('transaction_id');
+            
+            // Decode user ID from request body
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
+
+            $result = $this->boostSubscriptionService->verifyAndActivateSubscription($transactionId, $user);
+
+            if ($result['status'] === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => $result['message'],
+                    'subscription' => $result['subscription']
+                ], 200);
+            } else {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $result['message']
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to verify payment',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 

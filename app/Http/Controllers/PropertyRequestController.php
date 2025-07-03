@@ -406,8 +406,16 @@ class PropertyRequestController extends Controller
                         if ($paymentResponse['status'] === 'success') {
                 // Get the Flutterwave response data
                 $flutterwaveData = $paymentResponse['data'];
+                $txRef = $paymentData['tx_ref'];
 
-                // Record the pending viewing
+                Log::info('Property request payment initialization successful', [
+                    'user_id' => $user->id,
+                    'property_request_id' => $propertyRequestId,
+                    'tx_ref' => $txRef,
+                    'payment_link' => $flutterwaveData['link']
+                ]);
+
+                // Record the pending viewing with tx_ref (actual transaction ID will be updated during verification)
                 PropertyRequestViewing::create([
                     'user_id' => $user->id,
                     'property_request_id' => $propertyRequestId,
@@ -417,7 +425,7 @@ class PropertyRequestController extends Controller
                     'month' => $currentMonth,
                     'status' => 'pending',
                     'viewed_at' => null,
-                    'flutterwave_transaction_id' => $flutterwaveData['id'] ?? $flutterwaveData['tx_ref'] ?? $paymentData['tx_ref'],
+                    'flutterwave_transaction_id' => $txRef, // Store tx_ref initially
                     'notes' => "Paid viewing of property request ID: {$propertyRequestId} - Payment pending"
                 ]);
 
@@ -425,8 +433,8 @@ class PropertyRequestController extends Controller
                     'status' => 'success',
                     'message' => 'Payment initialized successfully',
                     'data' => [
-                        'payment_url' => $flutterwaveData['link'] ?? $flutterwaveData['authorization_url'] ?? null,
-                        'transaction_reference' => $flutterwaveData['id'] ?? $flutterwaveData['tx_ref'] ?? $paymentData['tx_ref'],
+                        'payment_url' => $flutterwaveData['link'],
+                        'transaction_reference' => $txRef, // Return tx_ref, actual transaction ID will be available after payment
                         'amount' => 5000,
                         'currency' => 'NGN',
                         'property_request_id' => $propertyRequestId,
@@ -479,7 +487,8 @@ class PropertyRequestController extends Controller
     public function verifyPropertyPayment(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'transaction_reference' => 'required|string'
+            'user_id' => 'required|string',
+            'transaction_id' => 'required|string'
         ]);
 
         if ($validator->fails()) {
@@ -491,25 +500,61 @@ class PropertyRequestController extends Controller
         }
 
         try {
-            $transactionRef = $request->transaction_reference;
-            $user = $this->getUserFromRequest($request);
+            // Decode user ID from request body
+            $decodedUserId = $this->hashidsService->decode($request->user_id);
+            if (!$decodedUserId) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user ID'
+                ], 400);
+            }
+
+            $user = User::findOrFail($decodedUserId);
+            $transactionRef = $request->transaction_id;
+
+            Log::info('Attempting to verify property request payment', [
+                'transaction_reference' => $transactionRef,
+                'user_id' => $user ? $user->id : 'not provided'
+            ]);
+
+            // Find the pending viewing record by transaction ID first
+            $viewing = PropertyRequestViewing::where('flutterwave_transaction_id', $transactionRef)
+                ->where('status', 'pending')
+                ->first();
+
+            if (!$viewing) {
+                Log::info('Viewing not found by transaction ID, looking for most recent pending viewing');
+                
+                // Find the most recent pending viewing (this handles the case where we stored tx_ref)
+                $viewing = PropertyRequestViewing::where('status', 'pending')
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                
+                if ($viewing) {
+                    Log::info('Found pending viewing, updating with actual transaction ID', [
+                        'viewing_id' => $viewing->id,
+                        'old_transaction_id' => $viewing->flutterwave_transaction_id,
+                        'new_transaction_id' => $transactionRef
+                    ]);
+                    
+                    // Update the viewing with the actual transaction ID
+                    $viewing->update([
+                        'flutterwave_transaction_id' => $transactionRef
+                    ]);
+                }
+            }
+
+            if (!$viewing) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Payment record not found'
+                ], 404);
+            }
 
             // Verify payment with Flutterwave
             $verificationResponse = $this->flutterwaveService->verifyPayment($transactionRef);
 
             if ($verificationResponse['status'] === 'success' && $verificationResponse['data']['status'] === 'successful') {
-                // Find the pending viewing record
-                $viewing = PropertyRequestViewing::where('flutterwave_transaction_id', $transactionRef)
-                    ->where('status', 'pending')
-                    ->first();
-
-                if (!$viewing) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Payment record not found'
-                    ], 404);
-                }
-
                 // Update viewing status to completed
                 $viewing->update([
                     'status' => 'completed',

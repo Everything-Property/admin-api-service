@@ -238,12 +238,21 @@ class BoostSubscriptionService
             $paymentResponse = $this->flutterwaveService->initializePayment($paymentData);
 
             if ($paymentResponse['status'] === 'success') {
+                $flutterwaveData = $paymentResponse['data'];
+                
+                Log::info('Payment initialization successful', [
+                    'subscription_id' => $subscription->id,
+                    'tx_ref' => $txRef,
+                    'payment_link' => $flutterwaveData['link']
+                ]);
+                
                 DB::commit();
                 return [
                     'status' => 'success',
                     'subscription_id' => $subscription->id,
-                    'payment_link' => $paymentResponse['data']['link'],
-                    'transaction_id' => $txRef,
+                    'payment_link' => $flutterwaveData['link'],
+                    'transaction_id' => $txRef, // This is our tx_ref, actual transaction ID will be available after payment
+                    'tx_ref' => $txRef,
                     'amount' => $amount,
                 ];
             } else {
@@ -271,10 +280,46 @@ class BoostSubscriptionService
         try {
             DB::beginTransaction();
 
-            // Find the subscription by transaction reference
+            Log::info('Attempting to verify subscription', [
+                'transaction_id' => $transactionId,
+                'user_id' => $user ? $user->id : 'not provided'
+            ]);
+
+            // Find subscription by the actual transaction ID first
             $subscription = UserBoostSubscription::where('flutterwave_transaction_id', $transactionId)
                 ->where('status', 'pending')
                 ->first();
+
+            if (!$subscription) {
+                Log::info('Subscription not found by transaction ID, looking for most recent pending subscription');
+                
+                // Find the most recent pending subscription (this handles the case where we stored tx_ref)
+                $subscription = UserBoostSubscription::where('status', 'pending')
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                
+                if ($subscription) {
+                    Log::info('Found pending subscription, updating with actual transaction ID', [
+                        'subscription_id' => $subscription->id,
+                        'old_transaction_id' => $subscription->flutterwave_transaction_id,
+                        'new_transaction_id' => $transactionId
+                    ]);
+                    
+                    // Update the subscription with the actual transaction ID
+                    $subscription->update([
+                        'flutterwave_transaction_id' => $transactionId
+                    ]);
+                }
+            }
+
+            if ($subscription) {
+                Log::info('Found subscription', [
+                    'subscription_id' => $subscription->id,
+                    'stored_transaction_id' => $subscription->flutterwave_transaction_id,
+                    'user_id' => $subscription->user_id
+                ]);
+            }
+            
 
             if (!$subscription) {
                 return [
@@ -291,7 +336,7 @@ class BoostSubscriptionService
                 ];
             }
 
-            // Verify payment with Flutterwave
+            // Verify payment with Flutterwave using the provided transaction ID
             $verificationResponse = $this->flutterwaveService->verifyPayment($transactionId);
 
             if ($verificationResponse['status'] === 'success' && $verificationResponse['is_successful']) {

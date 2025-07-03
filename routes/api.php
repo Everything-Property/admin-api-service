@@ -156,6 +156,8 @@ Route::group(['prefix' => 'boost-subscriptions'], function () {
     Route::post('/viewing-request', [BoostSubscriptionController::class, 'createViewingRequest']);
 });
 
+
+
 // Property Request Routes
 Route::group(['prefix' => 'property-requests'], function () {
     Route::get('/', [PropertyRequestController::class, 'index']);

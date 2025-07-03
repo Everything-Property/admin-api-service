@@ -48,9 +48,21 @@ class FlutterwaveService
             ]);
 
             if ($response->successful()) {
+                $responseData = $response->json();
+                $data = $responseData['data'];
+                
+                Log::info('Flutterwave payment initialization successful', [
+                    'full_response' => $responseData,
+                    'data_object' => $data,
+                    'tx_ref' => $data['tx_ref'] ?? 'not found',
+                    'id' => $data['id'] ?? 'not found',
+                    'link' => $data['link'] ?? 'not found',
+                    'status' => $data['status'] ?? 'not found'
+                ]);
+                
                 return [
                     'status' => 'success',
-                    'data' => $response->json()['data'],
+                    'data' => $data,
                     'message' => 'Payment initialized successfully'
                 ];
             }
@@ -85,13 +97,81 @@ class FlutterwaveService
     public function verifyPayment(string $transactionId): array
     {
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->secretKey,
-                'Content-Type' => 'application/json',
-            ])->get($this->baseUrl . '/transactions/' . $transactionId . '/verify');
+            // Check if this is a tx_ref (contains non-numeric characters)
+            if (!is_numeric($transactionId)) {
+                // This is a tx_ref, use the verify by tx_ref endpoint
+                // Try different Flutterwave endpoints for tx_ref verification
+                $endpoints = [
+                    $this->baseUrl . '/transactions/verify_by_reference?tx_ref=' . urlencode($transactionId),
+                    $this->baseUrl . '/transactions?tx_ref=' . urlencode($transactionId),
+                    $this->baseUrl . '/transactions/verify?tx_ref=' . urlencode($transactionId)
+                ];
+                
+                $response = null;
+                $lastError = null;
+                
+                foreach ($endpoints as $endpoint) {
+                    Log::info('Trying Flutterwave endpoint', [
+                        'tx_ref' => $transactionId,
+                        'endpoint' => $endpoint
+                    ]);
+                    
+                    try {
+                        $response = Http::withHeaders([
+                            'Authorization' => 'Bearer ' . $this->secretKey,
+                            'Content-Type' => 'application/json',
+                        ])->get($endpoint);
+                        
+                        if ($response->successful()) {
+                            Log::info('Successful response from endpoint', [
+                                'endpoint' => $endpoint,
+                                'status' => $response->status()
+                            ]);
+                            break;
+                        } else {
+                            $lastError = $response->json();
+                            Log::warning('Failed response from endpoint', [
+                                'endpoint' => $endpoint,
+                                'status' => $response->status(),
+                                'error' => $lastError
+                            ]);
+                        }
+                    } catch (Exception $e) {
+                        $lastError = ['error' => $e->getMessage()];
+                        Log::warning('Exception from endpoint', [
+                            'endpoint' => $endpoint,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
+                // If all endpoints failed, use the last error
+                if (!$response || !$response->successful()) {
+                    $response = Http::response($lastError, 400);
+                }
+            } else {
+                // This is a transaction ID, use the regular verify endpoint
+                $verifyUrl = $this->baseUrl . '/transactions/' . $transactionId . '/verify';
+                Log::info('Verifying payment by transaction ID', [
+                    'transaction_id' => $transactionId,
+                    'url' => $verifyUrl
+                ]);
+                
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $this->secretKey,
+                    'Content-Type' => 'application/json',
+                ])->get($verifyUrl);
+            }
 
             if ($response->successful()) {
-                $data = $response->json()['data'];
+                $responseData = $response->json();
+                $data = $responseData['data'] ?? null;
+
+                Log::info('Flutterwave payment verification successful', [
+                    'transaction_id' => $transactionId,
+                    'response_status' => $responseData['status'] ?? 'unknown',
+                    'data_status' => $data['status'] ?? 'unknown'
+                ]);
 
                 return [
                     'status' => 'success',
@@ -101,10 +181,12 @@ class FlutterwaveService
                 ];
             }
 
+            $responseData = $response->json();
             Log::error('Flutterwave payment verification failed', [
                 'transaction_id' => $transactionId,
-                'response' => $response->json(),
-                'status' => $response->status()
+                'response' => $responseData,
+                'status' => $response->status(),
+                'headers' => $response->headers()
             ]);
 
             return [
@@ -206,6 +288,15 @@ class FlutterwaveService
         if ($verificationResponse['status'] === 'success' && $verificationResponse['is_successful']) {
             // Activate subscription
             $subscription->update(['status' => 'active']);
+            return [
+                'status' => 'success',
+                'message' => 'Subscription activated successfully'
+            ];
         }
+
+        return [
+            'status' => 'error',
+            'message' => 'Payment verification failed'
+        ];
     }
 }
