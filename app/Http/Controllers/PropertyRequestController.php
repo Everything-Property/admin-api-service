@@ -381,7 +381,7 @@ class PropertyRequestController extends Controller
                 'tx_ref' => 'PR_' . $propertyRequestId . '_' . $user->id . '_' . time(),
                 'amount' => 5000, // Fixed amount of 5000
                 'currency' => 'NGN',
-                'redirect_url' => 'https://localhost:3000/dashboard/property-requests',
+                'redirect_url' => 'http://localhost:3007/dashboard/property-requests',
                 'customer' => [
                     'email' => $user->email,
                     'name' => $user->first_name . ' ' . $user->last_name,
@@ -535,7 +535,8 @@ class PropertyRequestController extends Controller
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Payment verified successfully. Property request details retrieved.',
-                    'data' => $data
+                    'data' => $data,
+                    'redirect_url' => 'http://localhost:3007/dashboard/property-requests'
                 ]);
 
             } else {
