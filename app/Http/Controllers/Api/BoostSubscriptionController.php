@@ -192,7 +192,7 @@ class BoostSubscriptionController extends Controller
             $user = User::findOrFail($decodedUserId);
 
             // Use localhost redirect URL for development
-            $redirectUrl = 'http://localhost:3000/dashboard/subscription-plans';
+            $redirectUrl = 'http://localhost:3007/dashboard/subscription-plans';
 
             $result = $this->boostSubscriptionService->initializeSubscriptionPayment(
                 $user,
