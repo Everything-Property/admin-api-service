@@ -146,7 +146,7 @@ Route::get('/boost-subscriptions/all-plans', [BoostSubscriptionController::class
 
 // Protected boost subscription routes
 Route::group(['prefix' => 'boost-subscriptions'], function () {
-    Route::get('/current', [BoostSubscriptionController::class, 'getCurrentSubscription']);
+    Route::post('/current', [BoostSubscriptionController::class, 'getCurrentSubscription']);
     Route::get('/history', [BoostSubscriptionController::class, 'getSubscriptionHistory']);
     Route::post('/initialize-payment', [BoostSubscriptionController::class, 'initializePayment']);
     Route::post('/verify-payment', [BoostSubscriptionController::class, 'verifyPayment']);
