@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class PropertyRequestController extends Controller
@@ -450,6 +451,29 @@ class PropertyRequestController extends Controller
     }
 
     /**
+     * Get user from request (decoded from Symfony's hashids)
+     */
+    private function getUserFromRequest(Request $request): ?User
+    {
+        $encodedUserId = $request->header('X-User-ID');
+
+        if (!$encodedUserId) {
+            return null;
+        }
+
+        try {
+            $userId = $this->hashidsService->decode($encodedUserId);
+            return User::find($userId);
+        } catch (\Exception $e) {
+            Log::warning('Failed to decode user ID from request', [
+                'encoded_user_id' => $encodedUserId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
      * Verify payment and grant access to property request details
      */
     public function verifyPropertyPayment(Request $request): JsonResponse
@@ -468,6 +492,7 @@ class PropertyRequestController extends Controller
 
         try {
             $transactionRef = $request->transaction_reference;
+            $user = $this->getUserFromRequest($request);
 
             // Verify payment with Flutterwave
             $verificationResponse = $this->flutterwaveService->verifyPayment($transactionRef);
